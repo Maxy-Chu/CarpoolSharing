@@ -4,6 +4,7 @@ import (
 	pb "CarpoolSharing/shared/proto/trip"
 )
 
+// Route Model
 type OsrmApiResponse struct {
 	Routes []struct {
 		Distance float64 `json:"distance"`
@@ -33,5 +34,18 @@ func (o *OsrmApiResponse) ToProto() *pb.Route {
 		},
 		Distance: route.Distance,
 		Duration: route.Duration,
+	}
+}
+
+// RideFare Calculation Model
+type PricingConfig struct {
+	PricePerUnitOfDistance float64
+	PricePerMinute         float64
+}
+
+func DefaultPricingConfig() *PricingConfig {
+	return &PricingConfig{
+		PricePerUnitOfDistance: 1.5,
+		PricePerMinute:         0.25,
 	}
 }
