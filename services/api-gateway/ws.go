@@ -1,8 +1,9 @@
 package main
 
 import (
+	"CarpoolSharing/services/api-gateway/grpc_clients"
 	"CarpoolSharing/shared/contracts"
-	"CarpoolSharing/shared/util"
+	"CarpoolSharing/shared/proto/driver"
 	"log"
 	"net/http"
 
@@ -57,34 +58,49 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("userID")
 	if userID == "" {
 		log.Println("No user ID provided")
+		return
 	}
 
 	packageSlug := r.URL.Query().Get("packageSlug")
 	if packageSlug == "" {
 		log.Println("No packageSlug provided")
+		return
 	}
 
-	type Driver struct {
-		Id             string `json:"id"`
-		Name           string `json:"name"`
-		ProfilePicture string `json:"profilePicture"`
-		CarPlate       string `json:"carPlate"`
-		PackageSlug    string `json:"packageSlug"`
+	ctx := r.Context()
+
+	// Call Driver Service
+	driverService, err := grpc_clients.NewdriverServiceClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Closing connections
+	defer func() {
+		driverService.Client.UnregisterDriver(ctx, &driver.RegisterDriverRequest{
+			DriverID:    userID,
+			PackageSlug: packageSlug,
+		})
+		driverService.Close()
+		log.Println("Driver unregistered: ", userID)
+	}()
+
+	driverData, err := driverService.Client.RegisterDriver(ctx, &driver.RegisterDriverRequest{
+		DriverID:    userID,
+		PackageSlug: packageSlug,
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	msg := contracts.WSMessage{
 		Type: "driver.cmd.register",
-		Data: Driver{
-			Id:             userID,
-			Name:           "Maxy",
-			ProfilePicture: util.GetRandomAvatar(1),
-			CarPlate:       "ABC123",
-			PackageSlug:    packageSlug,
-		},
+		Data: driverData.Driver,
 	}
 
 	if err := conn.WriteJSON(msg); err != nil {
 		log.Printf("Error sending message: %v", err)
+		return
 	}
 
 }

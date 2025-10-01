@@ -8,9 +8,9 @@ import (
 )
 
 type previewTripRequest struct {
-	UserID      string           `json: "userID"`
-	Pickup      types.Coordinate `json: "pickup"`
-	Destination types.Coordinate `json: "destination"`
+	UserID      string           `json:"userID"`
+	Pickup      types.Coordinate `json:"pickup"`
+	Destination types.Coordinate `json:"destination"`
 }
 
 type HttpHandler struct {

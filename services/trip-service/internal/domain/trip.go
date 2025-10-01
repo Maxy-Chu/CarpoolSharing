@@ -1,7 +1,7 @@
 package domain
 
 import (
-	tripTypes "CarpoolSharing/services/trip-service/pkg"
+	tripTypes "CarpoolSharing/services/trip-service/pkg/types"
 	pb "CarpoolSharing/shared/proto/trip"
 	"CarpoolSharing/shared/types"
 	"context"

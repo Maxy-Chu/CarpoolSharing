@@ -2,7 +2,7 @@ package service
 
 import (
 	"CarpoolSharing/services/trip-service/internal/domain"
-	tripTypes "CarpoolSharing/services/trip-service/pkg"
+	tripTypes "CarpoolSharing/services/trip-service/pkg/types"
 	"CarpoolSharing/shared/proto/trip"
 	"CarpoolSharing/shared/types"
 	"context"
