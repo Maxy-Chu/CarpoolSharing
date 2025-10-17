@@ -8,6 +8,10 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	TripExchange = "trip"
+)
+
 type RabbitMQ struct {
 	conn    *amqp.Connection
 	Channel *amqp.Channel
@@ -42,10 +46,22 @@ func NewRabbitMQ(uri string) (*RabbitMQ, error) {
 type MessageHandler func(context.Context, amqp.Delivery) error
 
 func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) error {
+	// Set prefetch count to 1 for fair dispatch
+	// This tells RabbitMQ not to give more than one message to a service at a time.
+	// The worker will only get the next message after it has acknowledged the previous one.
+	err := r.Channel.Qos(
+		1,		// prefetchCount: Limit to 1 unacknowledged message per consumer
+		0,		// prefetchSize: No specific limit on message size
+		false,	//global: Apply prefetchCount to each consumer individually
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set QoS: %v", err)
+	}
+
 	msgs, err := r.Channel.Consume(
 		queueName, // queue
 		"",     // consumer
-		true,   // auto-ack
+		false,   // auto-ack
 		false,  // exclusive
 		false,  // no-local
 		false,  // no-wait
@@ -62,7 +78,19 @@ func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) err
 			log.Printf("Received a message: %s", msg.Body)
 
 			if err := handler(ctx, msg); err != nil {
-				log.Fatalf("failed to handle the message: %v", err)
+				log.Printf("ERROR: Failed to handle the message: %v. Messge body: %s", err, msg.Body)
+				// Nack the message. Set requeue to false to avoid immediate redelivery loops.
+				// Consider a dead-letter exchange (DLQ) or a more sophisticated retry mechanism for production
+				if nackErr := msg.Nack(false, false); nackErr != nil {
+					log.Printf("ERROR: Failed to Nack message: %v", nackErr)
+				}
+				// Coneinue to next msg
+				continue
+			}
+
+			// Only Ack if the handler succeeds
+			if ackErr := msg.Ack(false); ackErr != nil {
+				log.Printf("ERROR: Failed to Ack message: %v. Message body: %s", ackErr, msg.Body)
 			}
 		}
 	}()
@@ -72,9 +100,11 @@ func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) err
 
 // method to PUBLISH message, called by trip-service/internal/infrastructure/events/trip_publisher.go
 func (r *RabbitMQ) PublishMessage(ctx context.Context, routingKey string, message string) error {
+	log.Printf("Publishing message with routing key: %s", routingKey)
+	//TODO: sending JSON message
 	return r.Channel.PublishWithContext(ctx,
-		"",      // exchange
-		"hello", // routing key
+		TripExchange,      // exchange
+		routingKey, // routing key
 		false,   // mandatory
 		false,   // immediate
 		amqp.Publishing{
@@ -86,8 +116,36 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context, routingKey string, messag
 
 // basic function for rabbitmq constructor (NewRabbitMQ)
 func (r *RabbitMQ) setupExchangesAndQueues() error {
-	_, err := r.Channel.QueueDeclare(
-		"hello", // name
+	err := r.Channel.ExchangeDeclare(
+		TripExchange, // name
+		"topic",      // type
+		true,         // durable
+		false,        // auto-deleted
+		false,        // internal
+		false,        // no-wait
+		nil,          // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("failed to declare exchange %s: %v", TripExchange, err)
+	}
+
+	// QUEUE 1: find available driver
+	if err := r.declareAndBindQueue(
+		FindAvailableDriversQueue,
+		[]string{
+			contracts.TripEventCreated, contracts.TripEventDriverNotInterested,
+		},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *RabbitMQ) declareAndBindQueue(queueName string, messageTypes []string, exchange string) error {
+	q, err := r.Channel.QueueDeclare(
+		queueName, // name
 		true,    // durable
 		false,   // delete when unused
 		false,   // exclusive
@@ -96,6 +154,18 @@ func (r *RabbitMQ) setupExchangesAndQueues() error {
 	)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	for _, msg := range messageTypes {
+		if err := r.Channel.QueueBind(
+			q.Name,       // queue name
+			msg,            // routing key
+			exchange, // exchange
+			false,
+			nil
+		); err != nil {
+			return fmt.Errorf("failed to bind queue to %s: %v", queueName, err)
+		}
 	}
 
 	return nil

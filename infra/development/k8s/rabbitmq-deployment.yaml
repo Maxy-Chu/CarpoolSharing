@@ -22,16 +22,17 @@ spec:
           readinessProbe: # check if rabbitmq is ready
             exec:
               command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 20
+            initialDelaySeconds: 60
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 20
+            failureThreshold: 6
           livenessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 60
+            initialDelaySeconds: 120
             periodSeconds: 30
-            timeoutSeconds: 15
+            timeoutSeconds: 20
+            failureThreshold: 3
           resources:
             requests:
               memory: "512Mi"
@@ -51,16 +52,17 @@ spec:
                   name: rabbitmq-credentials
                   key: password
             - name: RABBITMQ_MNESIA_BASE
-              value: /var/lib/rabbitmq/mersia
+              value: /var/lib/rabbitmq/mnesia
           volumeMounts:
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
-  volumeClaimTamplates:
+  volumeClaimTemplates:
     - metadata:
         name: rabbitmq-data
       spec:
-        accessMode: ["ReadWriteOnce"]
-        recources:
+        accessModes:
+          - ReadWriteOnce
+        resources:
           requests:
             storage: 1Gi
 ---

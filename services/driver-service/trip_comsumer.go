@@ -23,7 +23,7 @@ func NewTripConsumer(rabbitmq *messaging.RabbitMQ) *tripConsumer {
 // method for driver-service/main.go, create a goroutine to listen the message on the background
 func (c *tripConsumer) Listen() error {
 	//multiple consumer
-	return c.rabbitmq.ConsumeMessages("hello", func(ctx context.Context, msg amqp.Delivery) error {
+	return c.rabbitmq.ConsumeMessages(messaging.FindAvailableDriversQueue, func(ctx context.Context, msg amqp.Delivery) error {
 		log.Printf("driver received message: %v", msg)
 		return nil
 	})
