@@ -56,13 +56,13 @@ spec:
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
   volumeClaimTamplates:
-  - metadata:
-      name: rabbitmq-data
-    spec:
-      accessMode: ["ReadWriteOnce"]
-      recources:
-        requests:
-          storage: 1Gi
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessMode: ["ReadWriteOnce"]
+        recources:
+          requests:
+            storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
