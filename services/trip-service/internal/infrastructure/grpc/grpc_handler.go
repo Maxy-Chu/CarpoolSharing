@@ -21,7 +21,8 @@ type gRPCHandler struct {
 
 func NewGRPCHandler(server *grpc.Server, service domain.TripService, publisher *events.TripEventPublisher) *gRPCHandler {
 	handler := &gRPCHandler{
-		Service: service,
+		Service:   service,
+		publisher: publisher,
 	}
 
 	pb.RegisterTripServiceServer(server, handler)
@@ -66,20 +67,20 @@ func (h *gRPCHandler) PreviewTrip(ctx context.Context, req *pb.PreviewTripReques
 func (h *gRPCHandler) CreateTrip(ctx context.Context, req *pb.CreateTripRequest) (*pb.CreateTripResponse, error) {
 	fareID := req.GetRideFareID()
 	userID := req.GetUserID()
-	// TODO Fetch and validate the fare
+	// Fetch and validate the fare
 	rideFare, err := h.Service.GetAndValidateFare(ctx, fareID, userID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to validate the fare: %v", err)
 	}
 
-	// TODO Call create trip
+	// Call create trip
 	trip, err := h.Service.CreateTrip(ctx, rideFare)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create the trip: %v", err)
 	}
 	// TODO We also need to initialize
-	// TODO Add a comment at the end of the function to publish an event on the Async Comms module
-	if err := h.publisher.PublishTripCreated(ctx); err != nil {
+	// Add a comment at the end of the function to publish an event on the Async Comms module
+	if err := h.publisher.PublishTripCreated(ctx, trip); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to publish the trip created event: %v", err)
 	}
 

@@ -1,8 +1,11 @@
 package events
 
 import (
+	"CarpoolSharing/services/trip-service/internal/domain"
+	"CarpoolSharing/shared/contracts"
 	"CarpoolSharing/shared/messaging"
 	"context"
+	"encoding/json"
 )
 
 type TripEventPublisher struct {
@@ -15,6 +18,18 @@ func NewTripEventPublisher(rabbitmq *messaging.RabbitMQ) *TripEventPublisher {
 	}
 }
 
-func (p *TripEventPublisher) PublishTripCreated(ctx context.Context) error {
-	return p.rabbitmq.PublishMessage(ctx, contracts.TripEventCreated, "Trip has been created.")
+func (p *TripEventPublisher) PublishTripCreated(ctx context.Context, trip *domain.TripModel) error {
+	payload := messaging.TripEventData{
+		Trip: trip.ToProto(),
+	}
+
+	tripEventJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	return p.rabbitmq.PublishMessage(ctx, contracts.TripEventCreated, contracts.AmqpMessage{
+		OwnerID: trip.UserID,
+		Data:    tripEventJSON,
+	})
 }

@@ -1,7 +1,9 @@
 package messaging
 
 import (
+	"CarpoolSharing/shared/contracts"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -50,9 +52,9 @@ func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) err
 	// This tells RabbitMQ not to give more than one message to a service at a time.
 	// The worker will only get the next message after it has acknowledged the previous one.
 	err := r.Channel.Qos(
-		1,		// prefetchCount: Limit to 1 unacknowledged message per consumer
-		0,		// prefetchSize: No specific limit on message size
-		false,	//global: Apply prefetchCount to each consumer individually
+		1,     // prefetchCount: Limit to 1 unacknowledged message per consumer
+		0,     // prefetchSize: No specific limit on message size
+		false, //global: Apply prefetchCount to each consumer individually
 	)
 	if err != nil {
 		return fmt.Errorf("failed to set QoS: %v", err)
@@ -60,12 +62,12 @@ func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) err
 
 	msgs, err := r.Channel.Consume(
 		queueName, // queue
-		"",     // consumer
-		false,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+		"",        // consumer
+		false,     // auto-ack
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
 	)
 	if err != nil {
 		return err
@@ -99,17 +101,22 @@ func (r *RabbitMQ) ConsumeMessages(queueName string, handler MessageHandler) err
 }
 
 // method to PUBLISH message, called by trip-service/internal/infrastructure/events/trip_publisher.go
-func (r *RabbitMQ) PublishMessage(ctx context.Context, routingKey string, message string) error {
+func (r *RabbitMQ) PublishMessage(ctx context.Context, routingKey string, message contracts.AmqpMessage) error {
 	log.Printf("Publishing message with routing key: %s", routingKey)
-	//TODO: sending JSON message
+	//TODO: marshal JSON message
+	jsonMsg, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %v", err)
+	}
+
 	return r.Channel.PublishWithContext(ctx,
-		TripExchange,      // exchange
-		routingKey, // routing key
-		false,   // mandatory
-		false,   // immediate
+		TripExchange, // exchange
+		routingKey,   // routing key
+		false,        // mandatory
+		false,        // immediate
 		amqp.Publishing{
 			ContentType:  "text/plain",
-			Body:         []byte(message),
+			Body:         jsonMsg,
 			DeliveryMode: amqp.Persistent,
 		})
 }
@@ -140,17 +147,81 @@ func (r *RabbitMQ) setupExchangesAndQueues() error {
 		return err
 	}
 
+	// QUEUE 2: driver to accept requests
+	if err := r.declareAndBindQueue(
+		DriverCmdTripRequestQueue,
+		[]string{contracts.DriverCmdTripRequest},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 3: driver to respond the trip
+	if err := r.declareAndBindQueue(
+		DriverTripResponseQueue,
+		[]string{contracts.DriverCmdTripAccept, contracts.DriverCmdTripDecline},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 4: notify drivers no driver found
+	if err := r.declareAndBindQueue(
+		NotifyDriversNoDriverFoundQueue,
+		[]string{contracts.TripEventNoDriversFound},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 5: notify rider that the driver has been assigned
+	if err := r.declareAndBindQueue(
+		NotifyDriverAssignQueue,
+		[]string{contracts.TripEventDriverAssigned},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 6: payment trip response
+	if err := r.declareAndBindQueue(
+		PaymentTripResponseQueue,
+		[]string{contracts.PaymentCmdCreateSession},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 7: payment session created
+	if err := r.declareAndBindQueue(
+		NotifyPaymentEventSessionCreatedQueue,
+		[]string{contracts.PaymentEventSessionCreated},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
+	// QUEUE 8: payment status update
+	if err := r.declareAndBindQueue(
+		NotifyPaymentSuccessQueue,
+		[]string{contracts.PaymentEventSuccess},
+		TripExchange,
+	); err != nil {
+		return err
+	}
+
 	return nil
 }
 
+// every producer needs to declare and bind queue, so that the exchanger know which queue to receive the messages
 func (r *RabbitMQ) declareAndBindQueue(queueName string, messageTypes []string, exchange string) error {
 	q, err := r.Channel.QueueDeclare(
 		queueName, // name
-		true,    // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
+		true,      // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -158,11 +229,11 @@ func (r *RabbitMQ) declareAndBindQueue(queueName string, messageTypes []string, 
 
 	for _, msg := range messageTypes {
 		if err := r.Channel.QueueBind(
-			q.Name,       // queue name
-			msg,            // routing key
+			q.Name,   // queue name
+			msg,      // routing key
 			exchange, // exchange
 			false,
-			nil
+			nil,
 		); err != nil {
 			return fmt.Errorf("failed to bind queue to %s: %v", queueName, err)
 		}

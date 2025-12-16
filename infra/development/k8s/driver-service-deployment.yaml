@@ -36,10 +36,10 @@ kind: Service
 metadata:
   name: driver-service
 spec:
-  selector:
-    app:  driver-service
+  type: ClusterIP
   ports:
     - port: 9092
       name: grpc
       targetPort: 9092
-  type: ClusterIP
+  selector:
+    app: driver-service

@@ -13,7 +13,11 @@ import (
 	grpcserver "google.golang.org/grpc"
 )
 
-var GrpcAddr = ":9092"
+// Addresses
+var (
+	GrpcAddr    = ":9092"
+	rabbitmqURI = env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
+)
 
 func main() {
 	// create context and cancel
@@ -36,7 +40,7 @@ func main() {
 	service := NewService()
 
 	// RabbitMQ connection
-	rabbitmq, err := messaging.NewRabbitMQ(env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/"))
+	rabbitmq, err := messaging.NewRabbitMQ(rabbitmqURI)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -48,7 +52,7 @@ func main() {
 	grpcServer := grpcserver.NewServer()
 	NewGrpcHandler(grpcServer, service)
 
-	consumer := NewTripConsumer(rabbitmq)
+	consumer := NewTripConsumer(rabbitmq, service)
 	go func() {
 		if err := consumer.Listen(); err != nil {
 			log.Fatalf("Failed to listen to the message: %v", err)

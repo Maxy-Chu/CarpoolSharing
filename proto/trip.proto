@@ -43,7 +43,6 @@ message RideFare {
     string userID = 2;
     string packageSlug = 3;
     double totalPriceInCents = 4;
-    Route route = 5;
 }
 
 // Create Trip

@@ -4,6 +4,7 @@ import (
 	"CarpoolSharing/services/trip-service/internal/domain"
 	"CarpoolSharing/shared/types"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -18,7 +19,6 @@ type HttpHandler struct {
 }
 
 func (s *HttpHandler) HandleTripPreview(w http.ResponseWriter, r *http.Request) {
-
 	var reqBody previewTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		http.Error(w, "failed to parse JSON data", http.StatusBadRequest)
@@ -27,7 +27,10 @@ func (s *HttpHandler) HandleTripPreview(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 
-	t, _ := s.Service.GetRoute(ctx, &reqBody.Pickup, &reqBody.Destination)
+	t, err := s.Service.GetRoute(ctx, &reqBody.Pickup, &reqBody.Destination)
+	if err != nil {
+		log.Println(err)
+	}
 
 	writeJSON(w, http.StatusOK, t)
 }

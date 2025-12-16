@@ -3,6 +3,7 @@ package service
 import (
 	"CarpoolSharing/services/trip-service/internal/domain"
 	tripTypes "CarpoolSharing/services/trip-service/pkg/types"
+	pbd "CarpoolSharing/shared/proto/driver"
 	"CarpoolSharing/shared/proto/trip"
 	"CarpoolSharing/shared/types"
 	"context"
@@ -156,4 +157,12 @@ func (s *service) GetAndValidateFare(ctx context.Context, fareID, userID string)
 	}
 
 	return fare, nil
+}
+
+func (s *service) GetTripByID(ctx context.Context, id string) (*domain.TripModel, error) {
+	return s.repo.GetTripByID(ctx, id)
+}
+
+func (s *service) UpdateTrip(ctx context.Context, tripID string, status string, driver *pbd.Driver) error {
+	return s.repo.UpdateTrip(ctx, tripID, status, driver)
 }

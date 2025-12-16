@@ -27,7 +27,24 @@ func NewService() *Service {
 	}
 }
 
-// TODO: Register and Unregister
+// for trip consumer
+func (s *Service) FindAvailableDrivers(packageType string) []string {
+	var matchingDrivers []string // multiple drivers possible
+
+	for _, driver := range s.drivers {
+		if driver.Driver.PackageSlug == packageType {
+			matchingDrivers = append(matchingDrivers, driver.Driver.Id)
+		}
+	}
+
+	if len(matchingDrivers) == 0 {
+		return []string{}
+	}
+
+	return matchingDrivers
+}
+
+// Register and Unregister
 func (s *Service) RegisterDriver(driverId string, packageSlug string) (*pb.Driver, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -41,6 +58,7 @@ func (s *Service) RegisterDriver(driverId string, packageSlug string) (*pb.Drive
 	geohash := geohash.Encode(randomRoute[0][0], randomRoute[0][1])
 
 	driver := &pb.Driver{
+		Id:             driverId,
 		Geohash:        geohash,
 		Location:       &pb.Location{Latitude: randomRoute[0][0], Longitude: randomRoute[0][1]},
 		Name:           "Jay Norris",

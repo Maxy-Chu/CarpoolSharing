@@ -10,20 +10,40 @@ import (
 	"time"
 
 	"CarpoolSharing/shared/env"
+	"CarpoolSharing/shared/messaging"
 )
 
+// Addresses
 var (
-	httpAddr = env.GetString("HTTP_ADDR", ":8081")
+	httpAddr    = env.GetString("HTTP_ADDR", ":8081")
+	rabbitmqURI = env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
 )
 
 func main() {
 	log.Println("Starting API Gateway")
 
 	mux := http.NewServeMux()
+
+	// RabbitMQ connection
+	rabbitmq, err := messaging.NewRabbitMQ(rabbitmqURI)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rabbitmq.Close()
+
+	log.Println("Starting RabbitMQ connection")
+
 	mux.HandleFunc("POST /trip/preview", enableCORS(handleTripPreview))
 	mux.HandleFunc("POST /trip/start", enableCORS(handleTripStart))
-	mux.HandleFunc("/ws/drivers", handleDriversWebSocket)
-	mux.HandleFunc("/ws/riders", handleRidersWebSocket)
+	mux.HandleFunc("/ws/drivers", func(w http.ResponseWriter, r *http.Request) {
+		handleDriversWebSocket(w, r, rabbitmq) //otherwise we need to create a struct inside ws
+	})
+	mux.HandleFunc("/ws/riders", func(w http.ResponseWriter, r *http.Request) {
+		handleRidersWebSocket(w, r, rabbitmq) //otherwise we need to create a struct inside ws
+	})
+	mux.HandleFunc("/webhook/stripe", func(w http.ResponseWriter, r *http.Request) {
+		handleStripeWebhook(w, r, rabbitmq) //otherwise we need to create a struct inside ws
+	})
 
 	server := &http.Server{
 		Addr:    httpAddr,
