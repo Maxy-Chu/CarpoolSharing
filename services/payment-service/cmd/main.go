@@ -7,6 +7,7 @@ import (
 	"CarpoolSharing/services/payment-service/pkg/types"
 	"CarpoolSharing/shared/env"
 	"CarpoolSharing/shared/messaging"
+	"CarpoolSharing/shared/tracing"
 	"context"
 	"log"
 	"os"
@@ -14,15 +15,27 @@ import (
 	"syscall"
 )
 
+// Service Address
 var GrpcAddr = env.GetString("GRPC_ADDR", ":9004")
 
 func main() {
-	rabbitmqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
-
-	// Setup graceful shutdown
+	// Create context and cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize Tracing
+	tracerCfg := tracing.Config{
+		ServiceName:    "payment-service",
+		Environment:    env.GetString("ENVIRONMENT", "development"),
+		JaegerEndpoint: env.GetString("JAEGER_ENDPOINT", "http://jaeger:14268/api/traces"),
+	}
+	sh, err := tracing.InitTracer(tracerCfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize tracer: %v", err)
+	}
+	defer sh(ctx)
+
+	// Listen for Ctrl+C graceful shutdown signal
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -30,9 +43,8 @@ func main() {
 		cancel()
 	}()
 
-	appURL := env.GetString("APP_URL", "http://localhost:3000")
-
 	// Stripe config
+	appURL := env.GetString("APP_URL", "http://localhost:3000")
 	stripeCfg := &types.PaymentConfig{
 		StripeSecretKey: env.GetString("STRIPE_SECRET_KEY", ""),
 		SuccessURL:      env.GetString("STRIPE_SUCCESS_URL", appURL+"?payment=success"),
@@ -51,6 +63,7 @@ func main() {
 	svc := service.NewPaymentService(paymentProcessor)
 
 	// RabbitMQ connection
+	rabbitmqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
 	rabbitmq, err := messaging.NewRabbitMQ(rabbitmqURI)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
@@ -63,7 +76,7 @@ func main() {
 	tripConsumer := events.NewTripConsumer(rabbitmq, svc)
 	go tripConsumer.Listen()
 
-	// Wait for sutdown signal
+	// Waiting for shutdown signal from background
 	<-ctx.Done()
 	log.Println("Shutting down payment service...")
 }

@@ -26,6 +26,11 @@ spec:
               cpu: "125m"
           env:
             # Accessing an env variable from the app-config config map
+            - name: JAEGER_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  key: JAEGER_ENDPOINT
+                  name: app-config
             - name: GATEWAY_HTTP_ADDR
               valueFrom:
                 configMapKeyRef:

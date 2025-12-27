@@ -5,6 +5,7 @@ import (
 	"CarpoolSharing/shared/contracts"
 	"CarpoolSharing/shared/env"
 	"CarpoolSharing/shared/messaging"
+	"CarpoolSharing/shared/tracing"
 	"encoding/json"
 	"io"
 	"log"
@@ -14,8 +15,13 @@ import (
 	"github.com/stripe/stripe-go/v81/webhook"
 )
 
+var tracer = tracing.GetTracer("api-gateway")
+
 // Preview Trip
 func handleTripPreview(w http.ResponseWriter, r *http.Request) {
+	// tracer (adding before any return)
+	ctx, span := tracer.Start(r.Context(), "handleTripPreview")
+	defer span.End()
 
 	var reqBody previewTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
@@ -43,7 +49,7 @@ func handleTripPreview(w http.ResponseWriter, r *http.Request) {
 	defer tripService.Close()
 
 	// main cmd to call trip service
-	tripPreview, err := tripService.Client.PreviewTrip(r.Context(), reqBody.ToProto())
+	tripPreview, err := tripService.Client.PreviewTrip(ctx, reqBody.ToProto())
 	if err != nil {
 		log.Printf("failed to preview the trip: %v", err)
 		http.Error(w, "Failed to preview the trip", http.StatusInternalServerError)
@@ -57,6 +63,10 @@ func handleTripPreview(w http.ResponseWriter, r *http.Request) {
 
 // Create Trip
 func handleTripStart(w http.ResponseWriter, r *http.Request) {
+	// tracer (adding before any return)
+	ctx, span := tracer.Start(r.Context(), "handleTripStart")
+	defer span.End()
+
 	var reqBody startTripRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		http.Error(w, "failed to parse JSON data", http.StatusBadRequest)
@@ -80,7 +90,7 @@ func handleTripStart(w http.ResponseWriter, r *http.Request) {
 	defer tripService.Close()
 
 	// main cmd to call trip service
-	trip, err := tripService.Client.CreateTrip(r.Context(), reqBody.ToProto())
+	trip, err := tripService.Client.CreateTrip(ctx, reqBody.ToProto())
 	if err != nil {
 		log.Printf("failed to create the trip: %v", err)
 		http.Error(w, "Failed to create the trip", http.StatusInternalServerError)
@@ -93,6 +103,10 @@ func handleTripStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStripeWebhook(w http.ResponseWriter, r *http.Request, rb *messaging.RabbitMQ) {
+	// tracer (adding before any return)
+	ctx, span := tracer.Start(r.Context(), "handleStripeWebhook")
+	defer span.End()
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
@@ -152,7 +166,7 @@ func handleStripeWebhook(w http.ResponseWriter, r *http.Request, rb *messaging.R
 		}
 
 		if err := rb.PublishMessage(
-			r.Context(),
+			ctx,
 			contracts.PaymentEventSuccess,
 			message,
 		); err != nil {

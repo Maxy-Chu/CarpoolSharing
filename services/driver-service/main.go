@@ -3,6 +3,7 @@ package main
 import (
 	"CarpoolSharing/shared/env"
 	"CarpoolSharing/shared/messaging"
+	"CarpoolSharing/shared/tracing"
 	"context"
 	"log"
 	"net"
@@ -13,17 +14,27 @@ import (
 	grpcserver "google.golang.org/grpc"
 )
 
-// Addresses
-var (
-	GrpcAddr    = ":9092"
-	rabbitmqURI = env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
-)
+// Service Address
+var GrpcAddr = ":9092"
 
 func main() {
-	// create context and cancel
+	// Create context and cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize Tracing
+	tracerCfg := tracing.Config{
+		ServiceName:    "driver-service",
+		Environment:    env.GetString("ENVIRONMENT", "development"),
+		JaegerEndpoint: env.GetString("JAEGER_ENDPOINT", "http://jaeger:14268/api/traces"),
+	}
+	sh, err := tracing.InitTracer(tracerCfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize tracer: %v", err)
+	}
+	defer sh(ctx)
+
+	// Listen for Ctrl+C graceful shutdown signal
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -40,6 +51,7 @@ func main() {
 	service := NewService()
 
 	// RabbitMQ connection
+	rabbitmqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
 	rabbitmq, err := messaging.NewRabbitMQ(rabbitmqURI)
 	if err != nil {
 		log.Fatal(err)
@@ -49,7 +61,7 @@ func main() {
 	log.Println("Starting RabbitMQ connection")
 
 	// Starting gRPC Server, initialize grpc handler
-	grpcServer := grpcserver.NewServer()
+	grpcServer := grpcserver.NewServer(tracing.WithTracingInterceptors()...)
 	NewGrpcHandler(grpcServer, service)
 
 	consumer := NewTripConsumer(rabbitmq, service)
@@ -68,7 +80,7 @@ func main() {
 		}
 	}()
 
-	// wait for the shutdown signal
+	// Waiting for shutdown signal from background
 	<-ctx.Done()
 	log.Println("Shutting down the server...")
 	grpcServer.GracefulStop()
