@@ -5,6 +5,7 @@ import (
 	"CarpoolSharing/services/trip-service/internal/infrastructure/grpc"
 	"CarpoolSharing/services/trip-service/internal/infrastructure/repository"
 	"CarpoolSharing/services/trip-service/internal/service"
+	"CarpoolSharing/shared/db"
 	"CarpoolSharing/shared/env"
 	"CarpoolSharing/shared/messaging"
 	"CarpoolSharing/shared/tracing"
@@ -22,10 +23,6 @@ import (
 var GrpcAddr = ":9093"
 
 func main() {
-	// TODO: Replace Immemory Repository with Database
-	inmemRepo := repository.NewInmemRepository()
-	svc := service.NewService(inmemRepo)
-
 	// Create context and cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -41,6 +38,16 @@ func main() {
 		log.Fatalf("Failed to initialize tracer: %v", err)
 	}
 	defer sh(ctx)
+
+	// Initialize MongoDB
+	mongoClient, err := db.NewMongoClient(ctx, db.NewMongoDefaultConfig())
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+	defer mongoClient.Disconnect(ctx)
+	mongoDb := db.GetDatabase(mongoClient, db.NewMongoDefaultConfig())
+	mongoDBRepo := repository.NewMongoRepository(mongoDb)
+	svc := service.NewService(mongoDBRepo)
 
 	// Listen for Ctrl+C graceful shutdown signal
 	go func() {
